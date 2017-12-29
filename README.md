@@ -1,3 +1,19 @@
 # Chain Doctor
 
-Run `npm install` to install solution
+### Install
+
+```
+$ npm install -g truffle
+```
+### Quick Usage
+
+To setup environment:
+
+```
+$ truffle develop
+```
+
+And in another terminal:
+```
+$ npm run start
+```
