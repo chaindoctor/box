@@ -1,4 +1,5 @@
 import React, { Component } from 'react'
+import QrReader from 'react-qr-reader'
 import ChainDoctorHubContract from '../build/contracts/ChainDoctorHub.json'
 import ChainDoctorRemittanceContract from '../build/contracts/ChainDoctorRemittance.json'
 
@@ -16,27 +17,39 @@ class App extends Component {
     this.state = {
       storageValue: 0,
       instance:{},
+      instanceRemittance:{},
+      remittanceBalance:0,
+      accountBalance:0,
       openCreateNewRemittance:false,
       openSetupRemittance:false,
+      openPayAppointment:false,
+      openWithdraw:false,
       statusMessage:"",
       chainDoctorRemittanceCount:0,
       deadLineInSeconds_Submit:10,
-      setupRemittance_doctorAddress:"0xf17f52151EbEF6C7334FAD080c5704D77216b732",
+      setupRemittance_doctorAddress:"",
       setupRemittance_deposit:50,
       setupRemittance_appointmentValue:10,
-      setupRemittance_contractAddress:"0xe4324920dbcbaa6e250d7926d5b45119519962c7",
+      setupRemittance_contractAddress:"",
+      qrcode_Submit:"",
+      cityHallAddress_Submit:"",
       account:"",
+      delay: 300,
+      result: 'No result',
+      userBalance:"",
       web3: null
     }
 
-    this.createNewRemittance          = this.createNewRemittance.bind(this);
-    this.setupRemittanceProcess          = this.setupRemittanceProcess.bind(this);    
-    this.createChainDoctorRemittance  = this.createChainDoctorRemittance.bind(this);
+    this.createNewRemittance              = this.createNewRemittance.bind(this);
+    this.setupRemittanceProcess           = this.setupRemittanceProcess.bind(this);    
+    this.createChainDoctorRemittance      = this.createChainDoctorRemittance.bind(this);
     this.createNewChainDoctorRemittanceProcess  = this.createNewChainDoctorRemittanceProcess.bind(this);
-    
+    this.openPayAppointmentForm           = this.openPayAppointmentForm.bind(this);
+    this.payDoctor                        = this.payDoctor.bind(this);
+    this.openWithdrawForm                 = this.openWithdrawForm.bind(this);
+    this.releaseRemittance                = this.releaseRemittance.bind(this);
     
 
-    
   }
 
   componentWillMount() {
@@ -80,10 +93,14 @@ class App extends Component {
         acc = accounts[0];
         return chainDoctorHubInstance.getChainDoctorRemittanceCount( {from: acc} )
       }).then((result) => {
-        console.log(result.toNumber());
         this.setState({ chainDoctorRemittanceCount: result.toNumber() });
         this.setState({ instance: chainDoctorHubInstance });
         this.setState({ account:  acc});
+        
+        this.state.web3.eth.getBalance(acc,(e,balance) => {
+          var et = this.state.web3.fromWei(balance, 'ether')  
+          this.setState({userBalance:et.toString(10)});
+        });        
       })
     })
   }
@@ -92,14 +109,37 @@ class App extends Component {
     event.preventDefault(); 
     this.setState({openCreateNewRemittance:true});
     this.setState({openSetupRemittance:false});
+    this.setState({openPayAppointment:false});
+    this.setState({openWithdraw:false});
+    
     this.setState({statusMessage:""});      
   }
 
   setupRemittanceProcess(event){
     event.preventDefault();
     this.setState({openSetupRemittance:true});  
-    this.setState({openCreateNewRemittance:false}); 
+    this.setState({openCreateNewRemittance:false});
+    this.setState({openPayAppointment:false});
+    this.setState({openWithdraw:false}); 
     this.setState({statusMessage:""});  
+  }
+
+  openPayAppointmentForm(event){
+    event.preventDefault();
+    this.setState({openPayAppointment:true}); 
+    this.setState({openSetupRemittance:false});  
+    this.setState({openCreateNewRemittance:false}); 
+    this.setState({openWithdraw:false});
+    this.setState({statusMessage:""});
+  }
+
+  openWithdrawForm(event){
+    event.preventDefault();
+    this.setState({openWithdraw:true});
+    this.setState({openPayAppointment:false}); 
+    this.setState({openSetupRemittance:false});  
+    this.setState({openCreateNewRemittance:false}); 
+    this.setState({statusMessage:""});
   }
 
   createNewChainDoctorRemittanceProcess(event){
@@ -121,18 +161,12 @@ class App extends Component {
       return;
     }
 
-
     const contract = require('truffle-contract')
     const remittanceContract = contract(ChainDoctorRemittanceContract);  //city hall
 
-
-
     remittanceContract.setProvider(this.state.web3.currentProvider);
 
-console.log(contract);
     console.log(remittanceContract);
-    console.log();
-    
 
     return remittanceContract.at(remittanceContractAddress)
             .then(instance=>{
@@ -140,15 +174,23 @@ console.log(contract);
                 instance.createNewChainDoctorRemittanceProcess(doctorAddress, appointmentValue, {from: this.state.account, value:deposit, gas: 4000000} )
                 .then(tx=> {
                   console.log(tx);
-                  console.log(tx.logs[0].args);             
-                }).catch(function(e) {
+                  self.setState({statusMessage: "SUCCESS. Chain Doctor Remittance Process started."});                  
+                })
+                .catch(function(e) {
                     console.log(e);
                     self.setState({statusMessage: "Error setting up Remittance."});
-                  }) 
-            }).catch(function(e) {
+                  })                
+            })
+            .then(tx=>{
+                    self.state.web3.eth.getBalance(self.state.account,(e,balance) => { 
+                      var et = self.state.web3.fromWei(balance, 'ether')  
+                      self.setState({userBalance:et.toString(10)}); 
+                    });
+                })
+            .catch(function(e) {
                 console.log(e);
                 self.setState({statusMessage: "Error setting up Remittance Process."});
-            }) 
+            })
   }
   
 
@@ -165,61 +207,181 @@ console.log(contract);
 
     return this.state.instance.createChainDoctorRemittance(10 , {from: this.state.account})
             .then(tx => {
-              console.log(tx.logs[0].args);             
+              console.log(tx.logs[0].args);
+              
+              self.state.web3.eth.getBalance(self.state.account,(e,balance) => {
+                  const et = self.state.web3.fromWei(balance, 'ether')  
+                  self.setState({userBalance:et.toString(10)});   
+              });
+
+              self.setState({statusMessage: "SUCCESS. A new Chain Doctor Remittance was created. Address: " + tx.logs[0].args.chainDoctorRemittance});
+
             }).catch(function(e) {
                 console.log(e);
                 self.setState({statusMessage: "Error creating Remittance."});
               })   
   }
 
+  payDoctor(event){
+    event.preventDefault();
+    this.setState({statusMessage:""});  
+    var qrCode = this.state.qrcode_Submit;
+
+    var remittanceContractAddress = this.state.cityHallAddress_Submit;
+    var self = this;
+
+    const contract = require('truffle-contract')
+    const remittanceContract = contract(ChainDoctorRemittanceContract);  //city hall
+
+    remittanceContract.setProvider(this.state.web3.currentProvider);
+
+    console.log(remittanceContract);
+
+    return remittanceContract.at(remittanceContractAddress)
+            .then(instance=>{
+                console.log(instance);
+                instance.payDoctor(qrCode, {from: this.state.account, gas: 4000000} )
+                .then(tx=> {
+                  console.log(tx.logs[0].args);
+                  console.log(tx.logs[0].args.remittanceBalance.toString(10));
+                  console.log(tx.logs[0].args.doctorBalance.toString(10));
+                  self.setState({statusMessage: "SUCCESS. Appointment is registered and paid. Doctor's balance: "+ tx.logs[0].args.remittanceBalance.toString(10) + ". Amount left: "+ tx.logs[0].args.doctorBalance.toString(10)});
+                  self.state.web3.eth.getBalance(self.state.account,(e,balance) => { 
+                    var et = self.state.web3.fromWei(balance, 'ether')  
+                    self.setState({userBalance:et.toString(10)}); 
+                  }); 
+                  self.setState({instanceRemittance:instance });      
+                }).catch(function(e) {
+                    console.log(e);
+                    self.setState({statusMessage: "Error setting up Remittance."});
+                  }) 
+            }).catch(function(e) {
+                console.log(e);
+                self.setState({statusMessage: "Error setting up Remittance Process."});
+            })
+
+  }
+
+  releaseRemittance(event){
+    event.preventDefault();
+    this.setState({statusMessage:""});  
+    
+    var self = this;
+   
+    console.log(this.state.instanceRemittance);
+
+    return this.state.instanceRemittance.releaseRemittance( {from: this.state.account , gas: 4000000} )
+            .then(tx => {
+              self.state.web3.eth.getBalance(self.state.account,(e,balance) => {
+                    const et = self.state.web3.fromWei(balance, 'ether')  
+                    self.setState({userBalance:et.toString(10)});   
+              }); 
+              self.setState({statusMessage: "SUCCESS. "+tx.logs[0].args.amount+" Wei withdrawn."}); 
+              console.log(tx.logs[0].args); 
+              console.log(tx.logs[0].args);          
+              console.log(tx.logs[0].args);
+              console.log(tx.logs[0].args);
+              console.log(tx.logs[0].args);
+            }).catch(function(e) {
+                console.log(e);
+                self.setState({statusMessage: "Error creating Remittance."});
+              })  
+  }
+
   render() {
 
     let SetupRemittance = (this.state.openSetupRemittance )? (  
-                <div>
-                  <h3>Setup Chain Doctor Remittance.</h3>
-                  <form onSubmit={this.createNewChainDoctorRemittanceProcess}>
-                    <label>
-                    Remittance contract address:
-                    <input placeholder="0x125479695..." value={this.state.setupRemittance_contractAddress} onChange={e => this.setState({ setupRemittance_contractAddress: e.target.value })}/>
-                    </label>
-                    <br />
+                <div>                
+                  <form className="pure-form pure-form-stacked" onSubmit={this.createNewChainDoctorRemittanceProcess}>
+                    <fieldset>
+                        <legend>Setup Chain Doctor Remittance.</legend>
+                        <div className="pure-control-group">
+                            <label>
+                            Remittance contract address:
+                            <input placeholder="0x125479695..." value={this.state.setupRemittance_contractAddress} onChange={e => this.setState({ setupRemittance_contractAddress: e.target.value })}/>
+                            </label>
+                        </div>
 
-                    <label>
-                    Doctor account address:
-                    <input placeholder="0x234254545..." value={this.state.setupRemittance_doctorAddress} onChange={e => this.setState({ setupRemittance_doctorAddress: e.target.value })}/>
-                    </label>
-                    <br />
+                        <div className="pure-control-group">
+                            <label>
+                            Doctor account address:
+                            <input placeholder="0x234254545..." value={this.state.setupRemittance_doctorAddress} onChange={e => this.setState({ setupRemittance_doctorAddress: e.target.value })}/>
+                            </label>
+                        </div>
 
-                    <label>
-                    Appointment value (in Wei):
-                    <input placeholder="10" value={this.state.setupRemittance_appointmentValue} onChange={e => this.setState({ setupRemittance_appointmentValue: e.target.value })}/>
-                    </label>
-                    <br />
+                        <div className="pure-control-group">
+                            <label>
+                            Appointment value (in Wei):
+                            <input placeholder="10" value={this.state.setupRemittance_appointmentValue} onChange={e => this.setState({ setupRemittance_appointmentValue: e.target.value })}/>
+                            </label>
+                        </div>
 
-                    <label>
-                    Deposit (in Wei):
-                    <input placeholder="1000" value={this.state.setupRemittance_deposit} onChange={e => this.setState({ setupRemittance_deposit: e.target.value })}/>
-                    </label>
-                    <br />                                                     
-                    <button type="submit"> Setup </button>
-                  </form>                                                    
+                        <div className="pure-control-group">
+                            <label>
+                            Deposit (in Wei):
+                            <input placeholder="1000" value={this.state.setupRemittance_deposit} onChange={e => this.setState({ setupRemittance_deposit: e.target.value })}/>
+                            </label>
+                        </div>
+
+                        <div className="pure-controls">
+                            <button type="submit" className="pure-button pure-button-primary"> Setup </button>
+                        </div>
+                    </fieldset>
+                </form>
+
+                                                                    
                 </div>)
                  : 
               (<div></div>) 
 
     let CreateNewRemittanceForm = (this.state.openCreateNewRemittance )? (  
                 <div>
-                  <h3>Start a new Chain Doctor Remittance instance.</h3>
-                  <form onSubmit={this.createChainDoctorRemittance}> 
-                    <label>
-                    Deadline (in seconds - 16000000 is 6 months):
-                    <input placeholder="16000000" value={this.state.deadLineInSeconds_Submit} onChange={e => this.setState({ deadLineInSeconds_Submit: e.target.value })}/>
-                    </label>                                                    
-                    <button type="submit"> Create </button>
-                  </form>                                                    
+                  <form className="pure-form pure-form-stacked" onSubmit={this.createChainDoctorRemittance}>
+                      <fieldset>
+                          <legend>Start a new Chain Doctor Remittance instance.</legend>
+                          <label >Deadline (in seconds):</label>
+                          <input placeholder="16000000" value={this.state.deadLineInSeconds_Submit} onChange={e => this.setState({ deadLineInSeconds_Submit: e.target.value })}/>
+                          <span className="pure-form-message">This is a required field.</span>
+                          <button type="submit" className="pure-button pure-button-primary"> Create </button>
+                      </fieldset>
+                  </form>
+
                 </div>)
                  : 
               (<div></div>) 
+
+    let PayAppointmentForm = (this.state.openPayAppointment )? (  
+                <div>
+                  <form className="pure-form pure-form-stacked" onSubmit={this.payDoctor}>
+                      <fieldset>
+                          <legend>Register appointment</legend>
+                          <label >Chain Doctor Contract address:</label>
+                          <input placeholder="" value={this.state.cityHallAddress_Submit} onChange={e => this.setState({ cityHallAddress_Submit: e.target.value })}/>
+
+                          <label >QR Code:</label>
+                          <input placeholder="" value={this.state.qrcode_Submit} onChange={e => this.setState({ qrcode_Submit: e.target.value })}/>
+                          <span className="pure-form-message">This is a required field.</span>
+                          <button type="submit" className="pure-button pure-button-primary"> Register appointment </button>
+                      </fieldset>
+                  </form>
+
+                </div>)
+                 : 
+              (<div></div>) 
+
+    let WithdrawForm = (this.state.openWithdraw )? (  
+                <div>
+                  <form className="pure-form pure-form-stacked" onSubmit={this.releaseRemittance}>
+                      <fieldset>
+                          <button type="submit" className="pure-button pure-button-primary"> Witdrawn balance?</button>
+                      </fieldset>
+                  </form>
+
+                </div>)
+                 : 
+              (<div></div>) 
+
+                            
 
     return (
       <div className="App">
@@ -241,28 +403,53 @@ console.log(contract);
               <h1>Welcome to Chain Doctor!</h1>
               <p>Use buttons bellow to navigate.</p>
               <p>System has {this.state.chainDoctorRemittanceCount} Remittances deployed </p>
+              <p>User balance: {this.state.userBalance} Ether </p>
               {this.state.statusMessage}
-              <br /> <br />
-              <form onSubmit={this.createNewRemittance}>                       
-                      <button type="submit"> Create a new Chain Doctor Remittance </button>
+              <br />  <br />
+
+<table className="pure-table">
+    <tbody>
+        <tr>
+            <td> <form onSubmit={this.createNewRemittance}>                       
+                      <button className="pure-button pure-button-active" type="submit"> Create a new Chain Doctor Remittance </button>
               </form>
-              <br /> <br />
+
+              </td>
+            <td> 
               <form onSubmit={this.setupRemittanceProcess}>                       
-                      <button type="submit"> Setup Chain Doctor Remittance (add doctor address to receive payment)</button>
+                      <button className="pure-button pure-button-active" type="submit"> Setup Chain Doctor Remittance (add doctor address to receive payment)</button>
+              </form></td>
+            
+        </tr>
+
+        <tr>
+            <td><form onSubmit={this.openPayAppointmentForm}>                       
+                      <button className="pure-button pure-button-active" type="submit"> Register appointment </button>
               </form>
+              </td>
+            <td>
+              <form onSubmit={this.openWithdrawForm}>                       
+                      <button className="pure-button pure-button-active" type="submit"> Withdrawn </button>
+              </form></td>
+            
+        </tr>
+    </tbody>
+</table>
 
             </div>
           </div>
+          <div><br /></div>
           <div>{CreateNewRemittanceForm}</div>
           <div>{SetupRemittance}</div>
-          
+          <div>{PayAppointmentForm}</div>
+          <div>{WithdrawForm}</div>
+
+
+
+
+
         </main>
       </div>
-
-
-
-
-
 
     );
   }

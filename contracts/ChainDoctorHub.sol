@@ -8,7 +8,7 @@ pragma solidity ^0.4.18;
 contract ChainDoctorRemittance {
     
     address public owner; //city hall address
-    mapping (bytes32 => bool) public QRcodesMapping; //QR codes that has already being paid. Must be unique
+    mapping (uint => bool) public QRcodesMapping; //QR codes that has already being paid. Must be unique
     
     uint public deadlineInSeconds;  //remittance max period of time. after that, owner can claim funds
     
@@ -26,8 +26,8 @@ contract ChainDoctorRemittance {
     
     //Log events
     event LogRemittanceProcessStarted(address  sender, address  beneficiary, uint amountReceived , uint appointmentValueInWei);
-    event LogTransferred(address beneficiary, uint amount);
-    event LogDoctorPaid(address beneficiary, bytes32 qrcode);
+    event LogTransferred(address beneficiary, uint amount, uint accountBalance);
+    event LogDoctorPaid(address sender, uint qrcode, uint remittanceBalance, uint doctorBalance);
     
     //Constructor
     //_deadlineLimitInSeconds
@@ -64,22 +64,23 @@ contract ChainDoctorRemittance {
         return true;
     }
     
-    function payDoctor(address beneficiary, bytes32 qrcode) 
+    function payDoctor(uint qrcode) 
         public
         returns(bool success) 
     {
-        require(msg.sender == owner);
+
         require(QRcodesMapping[qrcode]==false); //must be unique
-        require(ChainDoctorRemittanceMapping[beneficiary].accountBalance > 0); //must have funds to pay doctor
+        require(ChainDoctorRemittanceMapping[msg.sender].accountBalance > 0); //must have funds to pay doctor
         
         //mark QR code as read and done to avoid paying twice
         QRcodesMapping[qrcode] = true;
         
         //add defaultAppointmentValueInWei to the doctor balance
-        ChainDoctorRemittanceMapping[beneficiary].remittanceBallance = ChainDoctorRemittanceMapping[beneficiary].remittanceBallance + ChainDoctorRemittanceMapping[beneficiary].appointmentValueInWei;
-        ChainDoctorRemittanceMapping[beneficiary].accountBalance = ChainDoctorRemittanceMapping[beneficiary].accountBalance - ChainDoctorRemittanceMapping[beneficiary].appointmentValueInWei;
+        ChainDoctorRemittanceMapping[msg.sender].remittanceBallance = ChainDoctorRemittanceMapping[msg.sender].remittanceBallance + ChainDoctorRemittanceMapping[msg.sender].appointmentValueInWei;
+        ChainDoctorRemittanceMapping[msg.sender].accountBalance = ChainDoctorRemittanceMapping[msg.sender].accountBalance - ChainDoctorRemittanceMapping[msg.sender].appointmentValueInWei;
         
         //add log event
+        LogDoctorPaid(msg.sender, qrcode,ChainDoctorRemittanceMapping[msg.sender].remittanceBallance , ChainDoctorRemittanceMapping[msg.sender].accountBalance );
         
         return true;
     }
@@ -100,7 +101,9 @@ contract ChainDoctorRemittance {
         
         msg.sender.transfer(amount);
         
-        LogTransferred(msg.sender, amount);
+        LogTransferred(msg.sender, amount, ChainDoctorRemittanceMapping[msg.sender].accountBalance);
+        //LogDoctorPaid(msg.sender, this.balance , ChainDoctorRemittanceMapping[msg.sender].remittanceBallance , ChainDoctorRemittanceMapping[msg.sender].accountBalance );
+        
         
         return true;
     }
@@ -118,7 +121,7 @@ contract ChainDoctorRemittance {
         
         selfdestruct(owner);
         
-        LogTransferred(msg.sender, amount);
+        LogTransferred(msg.sender, amount, this.balance);
         return true;
     }
     
